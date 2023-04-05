@@ -39,6 +39,11 @@ class Core extends Module {
   // 分岐先
   val br_target = Wire(UInt(WORD_LEN.W))
 
+  // ジャンプフラグ
+  val jmp_flg = (inst === JAL || inst === JALR)
+
+  val alu_out = Wire(UInt(WORD_LEN.W))
+
   val pc_next = MuxCase(
     pc_plus4,
     Seq(
@@ -72,6 +77,10 @@ class Core extends Module {
   /* B形式の命令の即値 */
   val imm_b = Cat(inst(31), inst(7), inst(30, 25), inst(11, 8))
   val imm_b_sext = Cat(Fill(19, imm_b(11)), imm_b, 0.U(1.U))
+
+  /* J形式の命令の即値 */
+  val imm_j = Cat(inst(31), inst(19, 12), inst(20), inst(30, 21))
+  val imm_j_sext = Cat(Fill(11, imm_j(19)), imm_j, 0.U(1.U)) // 最下位bitを0にする。
 
   val csignals = ListLookup(
     inst,
@@ -112,6 +121,9 @@ class Core extends Module {
       BGEU -> List(BR_BGEU, OP1_RS1, OP2_RS2, MEN_X, REN_X, WB_X),
       BLT  -> List(BR_BLT,  OP1_RS1, OP2_RS2, MEN_X, REN_X, WB_X),
       BLTU -> List(BR_BLTU, OP1_RS1, OP2_RS2, MEN_X, REN_X, WB_X),
+
+      JAL  -> List(ALU_ADD,  OP1_PC,  OP2_IMJ, MEN_X, REN_S, WB_PC),
+      JALR -> List(ALU_JALR, OP1_RS1, OP2_IMI, MEN_X, REN_S, WB_PC),
     )
   )
 
@@ -121,6 +133,7 @@ class Core extends Module {
     * 
     * op1_sel : 第1オペランド
     * ├─ OP1_RS1 : rs1_data
+    * ├─ OP1_PC  : pc_reg
     * 
     * op2_sel : 第2オペランド
     * ├─ OP2_RS2 : rs2_data
@@ -146,6 +159,7 @@ class Core extends Module {
     0.U(WORD_LEN.W),
     Seq(
       (op1_sel === OP1_RS1) -> rs1_data,
+      (op1_sel === OP1_PC)  -> pc_reg,
     )
   )
   val op2_data = MuxCase(
@@ -154,6 +168,7 @@ class Core extends Module {
       (op2_sel === OP2_RS2) -> rs2_data,
       (op2_sel === OP2_IMI) -> imm_i_sext,
       (op2_sel === OP2_IMS) -> imm_s_sext,
+      (op2_sel === OP2_IMJ) -> imm_j_sext,
     )
   )
 
@@ -161,7 +176,7 @@ class Core extends Module {
   /* [EX - Execute Stage] */
 
   // 演算した結果を alu_out に接続
-  val alu_out = MuxCase(
+  alu_out := MuxCase(
     0.U(WORD_LEN),
     Seq(
       (exe_fun === ALU_ADD) -> (op1_data + op2_data),
@@ -177,6 +192,8 @@ class Core extends Module {
 
       (exe_fun === ALU_SLT)  -> (op1_data.asSInt() < op2_data.asSInt()).asUInt(),
       (exe_fun === ALU_SLTU) -> (op1_data < op2_data).asUInt(),
+
+      (exe_fun === ALU_JALR) -> ((op1_data + op2_data) & ~1.U(WORD_LEN.W)),
     )
   )
 
@@ -209,6 +226,7 @@ class Core extends Module {
     alu_out, // WB_ALU が定義されているが alu_out はデフォルトの接続元にしている。
     Seq(
       (wb_sel === WB_MEM) -> io.dmem.rdata,
+      (wb_sel === WB_PC) -> pc_plus4,
     )
   )
 
