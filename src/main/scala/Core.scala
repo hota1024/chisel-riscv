@@ -41,6 +41,12 @@ class Core extends Module {
   val rs2_addr = inst(24, 20) // rs2
   val wb_addr  = inst(11, 7)  // rd - Write-Back用
 
+  // rs1 のデータを取得(無効なアドレスなら0.U)
+  val rs1_data = Mux((rs1_addr =/= 0.U(WORD_LEN.U)), regfile(rs1_addr), 0.U(WORD_LEN.W))
+
+  // rs2 のデータを取得(無効なアドレスなら0.U)
+  val rs2_data = Mux((rs2_addr =/= 0.U(WORD_LEN.U)), regfile(rs2_addr), 0.U(WORD_LEN.W))
+
   /* I形式の命令のデコード */
 
   val imm_i = inst(31, 20)
@@ -114,16 +120,6 @@ class Core extends Module {
     )
   )
 
-  /**
-    * RISC-V では0番レジスタの値は常に0になる。
-    */
-
-  // rs1 のデータを取得(無効なアドレスなら0.U)
-  val rs1_data = Mux((rs1_addr =/= 0.U(WORD_LEN.U)), regfile(rs1_addr), 0.U(WORD_LEN.W))
-
-  // rs2 のデータを取得(無効なアドレスなら0.U)
-  val rs2_data = Mux((rs2_addr =/= 0.U(WORD_LEN.U)), regfile(rs2_addr), 0.U(WORD_LEN.W))
-
   /*----------------------*/
   /* [EX - Execute Stage] */
 
@@ -162,7 +158,7 @@ class Core extends Module {
     regfile(wb_addr) := wb_data
   }
 
-  io.exit := (inst === 0x00602823.U(WORD_LEN.W))
+  io.exit := (inst === 0x00638433.U(WORD_LEN.W))
 
   /*-------------------------*/
   /*          Debug          */
@@ -179,7 +175,7 @@ class Core extends Module {
   printf(p"wb_data    : 0x${Hexadecimal(wb_data)}\n")
 
   printf(p"dmem.addr  : ${io.dmem.addr}\n")
-  printf(p"dmem.addr  : ${io.dmem.addr}\n")
+  printf(p"dmem.rdata : 0x${Hexadecimal(io.dmem.rdata)}\n")
   printf(p"dmem.wen   : ${io.dmem.wen}\n")
   printf(p"dmem.wdata : 0x${Hexadecimal(io.dmem.wdata)}\n")
   printf("-----------------------------\n")
