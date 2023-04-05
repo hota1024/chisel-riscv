@@ -68,8 +68,10 @@ class Core extends Module {
   val alu_out = MuxCase(
     0.U(WORD_LEN), // デフォルト値
     Seq(
-      (inst === LW) -> (rs1_data + imm_i_sext),
-      (inst === SW) -> (rs1_data + imm_s_sext),
+      (inst === LW || inst === ADDI) -> (rs1_data + imm_i_sext), // I命令の出力先アドレスを演算
+      (inst === SW)                  -> (rs1_data + imm_s_sext), // Store先アドレスを演算
+      (inst === ADD)                 -> (rs1_data + rs2_data),   // x[rs1] + x[rs2]
+      (inst === SUB)                 -> (rs1_data - rs2_data),   // x[rs1] - x[rs2]
     )
   )
 
@@ -84,11 +86,21 @@ class Core extends Module {
   /*-------------------------*/
   /* [WB - Write-Back Stage] */
 
-  // MEMステージで接続したアドレスのデータを取得
-  val wb_data = io.dmem.rdata
+  // Write-Back するデータ
+  val wb_data = MuxCase(
+    alu_out, // デフォルトでは alu_out を選択
+    Seq(
+      (inst === LW) -> io.dmem.rdata, // LW ならデータを読み込む
+    )
+  )
 
-  when(inst === LW) {
-    // LW - wb_addr のレジスタに結果をロード
+  when(
+       inst === LW
+    || inst === ADD
+    || inst === ADDI
+    || inst === SUB
+  ) {
+    // レジスタ wb_data を書き込む
     regfile(wb_addr) := wb_data
   }
 
