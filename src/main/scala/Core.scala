@@ -72,6 +72,14 @@ class Core extends Module {
       (inst === SW)                  -> (rs1_data + imm_s_sext), // Store先アドレスを演算
       (inst === ADD)                 -> (rs1_data + rs2_data),   // x[rs1] + x[rs2]
       (inst === SUB)                 -> (rs1_data - rs2_data),   // x[rs1] - x[rs2]
+
+      (inst === AND) -> (rs1_data & rs2_data), // x[rs1] & x[rs2]
+      (inst === OR)  -> (rs1_data | rs2_data), // x[rs1] | x[rs2]
+      (inst === XOR) -> (rs1_data ^ rs2_data), // x[rs1] ^ x[rs2]
+
+      (inst === ANDI) -> (rs1_data & imm_i_sext), // x[rs1] & sext(imm_i)
+      (inst === ORI)  -> (rs1_data | imm_i_sext), // x[rs1] | sext(imm_i)
+      (inst === XORI) -> (rs1_data ^ imm_i_sext), // x[rs1] ^ sext(imm_i)
     )
   )
 
@@ -96,9 +104,20 @@ class Core extends Module {
 
   when(
        inst === LW
+    // 加減演算
     || inst === ADD
     || inst === ADDI
     || inst === SUB
+
+    // 論理演算(R形式)
+    || inst === AND
+    || inst === OR
+    || inst === XOR
+
+    // 論理演算(I形式)
+    || inst === ANDI
+    || inst === ORI
+    || inst === XORI
   ) {
     // レジスタ wb_data を書き込む
     regfile(wb_addr) := wb_data
