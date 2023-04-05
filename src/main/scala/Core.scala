@@ -83,6 +83,12 @@ class Core extends Module {
       SLLI -> List(ALU_SLL, OP1_RS1, OP2_IMI, MEN_X, REN_S, WB_ALU),
       SRLI -> List(ALU_SRL, OP1_RS1, OP2_IMI, MEN_X, REN_S, WB_ALU),
       SRAI -> List(ALU_SRA, OP1_RS1, OP2_IMI, MEN_X, REN_S, WB_ALU),
+
+      SLT  -> List(ALU_SLT,  OP1_RS1, OP2_RS2, MEN_X, REN_S, WB_ALU),
+      SLTU -> List(ALU_SLTU, OP1_RS1, OP2_RS2, MEN_X, REN_S, WB_ALU),
+
+      SLTI  -> List(ALU_SLT,  OP1_RS1, OP2_IMI, MEN_X, REN_S, WB_ALU),
+      SLTIU -> List(ALU_SLTU, OP1_RS1, OP2_IMI, MEN_X, REN_S, WB_ALU),
     )
   )
 
@@ -145,6 +151,9 @@ class Core extends Module {
       (exe_fun === ALU_SLL) -> (op1_data << op2_data(4, 0))(31, 0),
       (exe_fun === ALU_SRL) -> (op1_data >> op2_data(4, 0)).asUInt(),
       (exe_fun === ALU_SRA) -> (op1_data.asSInt() >> op2_data(4, 0)).asUInt(),
+
+      (exe_fun === ALU_SLT)  -> (op1_data.asSInt() < op2_data.asSInt()).asUInt(),
+      (exe_fun === ALU_SLTU) -> (op1_data < op2_data).asUInt(),
     )
   )
 
