@@ -31,8 +31,22 @@ class Core extends Module {
   // 命令を取得
   val inst = io.imem.inst
 
-  // 立ち上がりエッジで pc_reg += 4 する回路
-  pc_reg := pc_reg + 4.U(WORD_LEN.W)
+  val pc_plus4 = pc_reg + 4.U(WORD_LEN.W)
+
+  // 分岐フラグ
+  val br_flg = Wire(Bool())
+
+  // 分岐先
+  val br_target = Wire(UInt(WORD_LEN.W))
+
+  val pc_next = MuxCase(
+    pc_plus4,
+    Seq(
+      br_flg -> br_target, // 分岐フラグがONなら分岐先を接続
+    )
+  )
+
+  pc_reg := pc_next
 
   /*---------------------------------*/
   /* [ID - Instruction Decode Stage] */
@@ -47,15 +61,17 @@ class Core extends Module {
   // rs2 のデータを取得(無効なアドレスなら0.U)
   val rs2_data = Mux((rs2_addr =/= 0.U(WORD_LEN.U)), regfile(rs2_addr), 0.U(WORD_LEN.W))
 
-  /* I形式の命令のデコード */
-
+  /* I形式の命令の即値 */
   val imm_i = inst(31, 20)
   val imm_i_sext = Cat(Fill(20, imm_i(11)), imm_i)
 
-  /* S形式の命令のデコード */
-
+  /* S形式の命令の即値 */
   val imm_s = Cat(inst(31, 25), inst(11, 7))
   val imm_s_sext = Cat(Fill(20, imm_s(11)), imm_s)
+
+  /* B形式の命令の即値 */
+  val imm_b = Cat(inst(31), inst(7), inst(30, 25), inst(11, 8))
+  val imm_b_sext = Cat(Fill(19, imm_b(11)), imm_b, 0.U(1.U))
 
   val csignals = ListLookup(
     inst,
@@ -89,6 +105,13 @@ class Core extends Module {
 
       SLTI  -> List(ALU_SLT,  OP1_RS1, OP2_IMI, MEN_X, REN_S, WB_ALU),
       SLTIU -> List(ALU_SLTU, OP1_RS1, OP2_IMI, MEN_X, REN_S, WB_ALU),
+
+      BEQ  -> List(BR_BEQ,  OP1_RS1, OP2_RS2, MEN_X, REN_X, WB_X),
+      BNE  -> List(BR_BNE,  OP1_RS1, OP2_RS2, MEN_X, REN_X, WB_X),
+      BGE  -> List(BR_BGE,  OP1_RS1, OP2_RS2, MEN_X, REN_X, WB_X),
+      BGEU -> List(BR_BGEU, OP1_RS1, OP2_RS2, MEN_X, REN_X, WB_X),
+      BLT  -> List(BR_BLT,  OP1_RS1, OP2_RS2, MEN_X, REN_X, WB_X),
+      BLTU -> List(BR_BLTU, OP1_RS1, OP2_RS2, MEN_X, REN_X, WB_X),
     )
   )
 
@@ -156,6 +179,20 @@ class Core extends Module {
       (exe_fun === ALU_SLTU) -> (op1_data < op2_data).asUInt(),
     )
   )
+
+  // 分岐命令
+  br_flg := MuxCase(
+    false.B,
+    Seq(
+      (exe_fun === BR_BEQ)  ->  (op1_data === op2_data),
+      (exe_fun === BR_BNE)  -> !(op1_data === op2_data),
+      (exe_fun === BR_BLT)  ->  (op1_data.asSInt() < op2_data.asSInt()),
+      (exe_fun === BR_BGE)  -> !(op1_data.asSInt() < op2_data.asSInt()),
+      (exe_fun === BR_BLTU) ->  (op1_data < op2_data),
+      (exe_fun === BR_BGEU) -> !(op1_data < op2_data),
+    )
+  )
+  br_target := pc_reg + imm_b_sext
 
   /*-----------------------------*/
   /* [MEM - Memory Access Stage] */
