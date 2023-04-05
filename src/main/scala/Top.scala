@@ -14,8 +14,10 @@ class Top extends Module {
   // メモリのハードウェア
   val memory = Module(new Memory())
 
-  // メモリの入出力をコアのメモリに接続
+  /* メモリの入出力をコアのメモリに接続 */
+
   core.io.imem <> memory.io.imem
+  core.io.dmem <> memory.io.dmem
 
   // コアの終了フラグを出力の終了フラグに接続
   io.exit := core.io.exit
