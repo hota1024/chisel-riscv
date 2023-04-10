@@ -37,7 +37,7 @@ class Memory extends Module {
   val mem = Mem(16384, UInt(8.W))
 
   // メモリデータのロード
-  loadMemoryFromFile(mem, "src/hex/add.hex")
+  loadMemoryFromFile(mem, "/src/riscv/rv32ui-p-add.hex")
 
   // 命令用メモリの inst に addr が示す値を接続
   io.imem.inst := Cat(

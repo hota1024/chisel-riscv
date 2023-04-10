@@ -15,30 +15,29 @@ class Core extends Module {
 
     // 処理が終わると true.B になる出力
     val exit = Output(Bool())
+
+    // パス条件判定用信号
+    val gp = Output(UInt(WORD_LEN.W))
   })
 
   // 32本の32bit幅(WORD_LEN.W)レジスタを用意
   val regfile = Mem(32, UInt(WORD_LEN.W))
+  val csr_regfile = Mem(4096, UInt(WORD_LEN.W))
 
   /*--------------------------------*/
   /* [IF - Instruction Fetch Stage] */
 
   // PC レジスタ
   val pc_reg = RegInit(START_ADDR)
-
   // 取得する命令のアドレスを PC で設定
   io.imem.addr := pc_reg
   // 命令を取得
   val inst = io.imem.inst
-
   val pc_plus4 = pc_reg + 4.U(WORD_LEN.W)
-
-  // 分岐フラグ
-  val br_flg = Wire(Bool())
-
   // 分岐先
   val br_target = Wire(UInt(WORD_LEN.W))
-
+  // 分岐フラグ
+  val br_flg = Wire(Bool())
   // ジャンプフラグ
   val jmp_flg = (inst === JAL || inst === JALR)
 
@@ -48,6 +47,7 @@ class Core extends Module {
     pc_plus4,
     Seq(
       br_flg           -> br_target,          // 分岐フラグがONなら分岐先を接続
+      jmp_flg          -> alu_out,
       (inst === ECALL) -> csr_regfile(0x305), // mtvec(0x305) に trap_vector(例外処理) が格納されている
     )
   )
@@ -187,6 +187,7 @@ class Core extends Module {
     Seq(
       (op1_sel === OP1_RS1) -> rs1_data,
       (op1_sel === OP1_PC)  -> pc_reg,
+      (op1_sel === OP1_IMZ) -> imm_z_uext,
     )
   )
   val op2_data = MuxCase(
@@ -244,17 +245,18 @@ class Core extends Module {
   /*-----------------------------*/
   /* [MEM - Memory Access Stage] */
 
-  val csr_regfile = Mem(4096, UInt(WORD_LEN.W))
-  val csr_addr    = inst(31, 20)
+  io.dmem.addr  := alu_out       // 算出したメモリアドレスをデータ用メモリのアドレスに接続
+  io.dmem.wen   := mem_wen
+  io.dmem.wdata := rs2_data      // 書き込むデータを接続
 
+  val csr_addr = Mux(csr_cmd === CSR_E, 0x342.U(CSR_ADDR_LEN.W), inst(31,20))
   val csr_rdata = csr_regfile(csr_addr)
-
   val csr_wdata = MuxCase(
     0.U(WORD_LEN.W),
     Seq(
       (csr_cmd === CSR_W) -> op1_data,
       (csr_cmd === CSR_S) -> (csr_rdata | op1_data),
-      (csr_cmd === CSR_X) -> (csr_rdata & ~op1_data),
+      (csr_cmd === CSR_C) -> (csr_rdata & ~op1_data),
       (csr_cmd === CSR_E) -> 11.U(WORD_LEN.W),        // マシンモードからのECALL
     )
   )
@@ -262,11 +264,6 @@ class Core extends Module {
   when(csr_cmd > 0.U) {
     csr_regfile(csr_addr) := csr_wdata
   }
-
-  io.dmem.addr := alu_out // 算出したメモリアドレスをデータ用メモリのアドレスに接続
-
-  io.dmem.wen   := mem_wen
-  io.dmem.wdata := rs2_data      // 書き込むデータを接続
 
   /*-------------------------*/
   /* [WB - Write-Back Stage] */
@@ -285,12 +282,14 @@ class Core extends Module {
     regfile(wb_addr) := wb_data
   }
 
-  io.exit := (inst === 0x00638433.U(WORD_LEN.W))
-
   /*-------------------------*/
   /*          Debug          */
+  io.gp := regfile(3)
+  io.exit := (pc_reg === 0x44.U(WORD_LEN.W))
+
   printf(p"pc_reg     : 0x${Hexadecimal(pc_reg)}\n")
   printf(p"inst       : 0x${Hexadecimal(inst)}\n")
+  printf(p"gp         : ${regfile(3)}\n")
 
   printf(p"rs1_addr   : $rs1_addr\n")
   printf(p"rs1_data   : 0x${Hexadecimal(rs1_data)}\n")
