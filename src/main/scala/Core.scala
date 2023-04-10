@@ -47,7 +47,8 @@ class Core extends Module {
   val pc_next = MuxCase(
     pc_plus4,
     Seq(
-      br_flg -> br_target, // 分岐フラグがONなら分岐先を接続
+      br_flg           -> br_target,          // 分岐フラグがONなら分岐先を接続
+      (inst === ECALL) -> csr_regfile(0x305), // mtvec(0x305) に trap_vector(例外処理) が格納されている
     )
   )
 
@@ -142,6 +143,8 @@ class Core extends Module {
       CSRRSI -> List(ALU_COPY1, OP1_IMZ, OP2_X, MEN_X, REN_S, WB_CSR, CSR_S),
       CSRRC  -> List(ALU_COPY1, OP1_RS1, OP2_X, MEN_X, REN_S, WB_CSR, CSR_C),
       CSRRCI -> List(ALU_COPY1, OP1_IMZ, OP2_X, MEN_X, REN_S, WB_CSR, CSR_C),
+
+      ECALL  -> List(ALU_X,     OP1_X,   OP2_X, MEN_X, REN_X,   WB_X, CSR_E),
     )
   )
 
@@ -252,6 +255,7 @@ class Core extends Module {
       (csr_cmd === CSR_W) -> op1_data,
       (csr_cmd === CSR_S) -> (csr_rdata | op1_data),
       (csr_cmd === CSR_X) -> (csr_rdata & ~op1_data),
+      (csr_cmd === CSR_E) -> 11.U(WORD_LEN.W),        // マシンモードからのECALL
     )
   )
 
