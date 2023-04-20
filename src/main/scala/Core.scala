@@ -71,9 +71,9 @@ class Core extends Module {
   /* [IF - Instruction Fetch Stage] */
 
   // PC レジスタ
-  val if_pc_reg = RegInit(START_ADDR)
+  val if_reg_pc = RegInit(START_ADDR)
   // 取得する命令のアドレスを PC で設定
-  io.imem.addr := if_pc_reg
+  io.imem.addr := if_reg_pc
   // 命令を取得
   val if_inst = io.imem.inst
 
@@ -86,7 +86,7 @@ class Core extends Module {
   // 演算結果
   val exe_alu_out = Wire(UInt(WORD_LEN.W))
 
-  val if_pc_plus4 = if_pc_reg + 4.U(WORD_LEN.W)
+  val if_pc_plus4 = if_reg_pc + 4.U(WORD_LEN.W)
   val if_pc_next = MuxCase(
     if_pc_plus4,
     Seq(
@@ -95,20 +95,25 @@ class Core extends Module {
       (if_inst === ECALL) -> csr_regfile(0x305), // mtvec(0x305) に trap_vector(例外処理) が格納されている
     )
   )
-  if_pc_reg := if_pc_next
+  if_reg_pc := if_pc_next
 
   /*------------------*/
   /* [IF/ID Register] */
 
   id_reg_pc   := if_reg_pc
-  id_Reg_inst := if_inst
+
+  // 分岐命令/ジャンプ命令なら IF ステージを無効化
+  id_reg_inst := Mux((exe_br_flg || exe_jmp_flg), BUBBLE, if_inst)
 
   /*---------------------------------*/
   /* [ID - Instruction Decode Stage] */
 
-  val id_rs1_addr = inst(19, 15) // rs1
-  val id_rs2_addr = inst(24, 20) // rs2
-  val id_wb_addr  = inst(11, 7)  // rd - Write-Back用
+  // 分岐命令/ジャンプ命令なら ID ステージを無効化
+  val id_inst = Mux((exe_br_flg || exe_jmp_flg), BUBBLE, id_reg_inst)
+
+  val id_rs1_addr = id_inst(19, 15) // rs1
+  val id_rs2_addr = id_inst(24, 20) // rs2
+  val id_wb_addr  = id_inst(11, 7)  // rd - Write-Back用
 
   // rs1 のデータを取得(無効なアドレスなら0.U)
   val id_rs1_data = Mux((id_rs1_addr =/= 0.U(WORD_LEN.U)), regfile(id_rs1_addr), 0.U(WORD_LEN.W))
@@ -117,31 +122,31 @@ class Core extends Module {
   val id_rs2_data = Mux((id_rs2_addr =/= 0.U(WORD_LEN.U)), regfile(id_rs2_addr), 0.U(WORD_LEN.W))
 
   /* I形式の命令の即値 */
-  val id_imm_i = inst(31, 20)
+  val id_imm_i = id_inst(31, 20)
   val id_imm_i_sext = Cat(Fill(20, id_imm_i(11)), id_imm_i)
 
   /* S形式の命令の即値 */
-  val id_imm_s = Cat(id_reg_inst(31, 25), id_reg_inst(11, 7))
+  val id_imm_s = Cat(id_inst(31, 25), id_inst(11, 7))
   val id_imm_s_sext = Cat(Fill(20, id_imm_s(11)), id_imm_s)
 
   /* B形式の命令の即値 */
-  val id_imm_b = Cat(id_reg_inst(31), id_reg_inst(7), id_reg_inst(30, 25), id_reg_inst(11, 8))
+  val id_imm_b = Cat(id_inst(31), id_inst(7), id_inst(30, 25), id_inst(11, 8))
   val id_imm_b_sext = Cat(Fill(19, id_imm_b(11)), id_imm_b, 0.U(1.U))
 
   /* J形式の命令の即値 */
-  val id_imm_j = Cat(id_reg_inst(31), id_reg_inst(19, 12), id_reg_inst(20), id_reg_inst(30, 21))
+  val id_imm_j = Cat(id_inst(31), id_inst(19, 12), id_inst(20), id_inst(30, 21))
   val id_imm_j_sext = Cat(Fill(11, id_imm_j(19)), id_imm_j, 0.U(1.U)) // 最下位bitを0にする。
 
   /* U形式の命令の即値 */
-  val id_imm_u = id_reg_inst(31, 12)
+  val id_imm_u = id_inst(31, 12)
   val id_imm_u_shifted = Cat(id_imm_u, Fill(12, 0.U))
 
   /* CSR用の即値 */
-  val id_imm_z = id_reg_inst(19, 15)
+  val id_imm_z = id_inst(19, 15)
   val id_imm_z_uext = Cat(Fill(27, 0.U), id_imm_z)
 
   val csignals = ListLookup(
-    id_reg_inst,
+    id_inst,
     List(              ALU_X,   OP1_RS1, OP2_RS2, MEN_X, REN_X, WB_X, CSR_X),
     Array(
       LW     -> List(ALU_ADD, OP1_RS1, OP2_IMI, MEN_X, REN_S, WB_MEM, CSR_X), // sext(M[x[rs1] + sext(offset)][31:0])
@@ -231,15 +236,15 @@ class Core extends Module {
     */
   val id_exe_fun :: id_op1_sel :: id_op2_sel :: id_mem_wen :: id_rf_wen :: id_wb_sel :: id_csr_cmd :: Nil = csignals
 
-  val op1_data = MuxCase(
+  val id_op1_data = MuxCase(
     0.U(WORD_LEN.W),
     Seq(
       (id_op1_sel === OP1_RS1) -> id_rs1_data,
-      (id_op1_sel === OP1_PC)  -> id_pc_reg,
+      (id_op1_sel === OP1_PC)  -> id_reg_pc,
       (id_op1_sel === OP1_IMZ) -> id_imm_z_uext,
     )
   )
-  val op2_data = MuxCase(
+  val id_op2_data = MuxCase(
     0.U(WORD_LEN.W),
     Seq(
       (id_op2_sel === OP2_RS2) -> id_rs2_data,
@@ -349,7 +354,7 @@ class Core extends Module {
   )
 
   when(mem_reg_csr_cmd > 0.U) {
-    csr_regfile(mem_Reg_csr_addr) := csr_wdata
+    csr_regfile(mem_reg_csr_addr) := csr_wdata
   }
 
   val mem_wb_data = MuxCase(
@@ -364,32 +369,30 @@ class Core extends Module {
   /*-------------------------*/
   /* [WB - Write-Back Stage] */
 
-  when(rf_wen === REN_S) {
+  when(wb_reg_rf_wen === REN_S) {
     // wb_addr が示すレジスタに Write-Back する。
-    regfile(wb_addr) := wb_data
+    regfile(wb_reg_wb_addr) := wb_reg_wb_data
   }
 
   /*-------------------------*/
   /*          Debug          */
+
   io.gp := regfile(3)
-  io.exit := (inst === UNIMP)
+  io.exit := (id_reg_inst === UNIMP)
 
-  printf(p"pc_reg     : 0x${Hexadecimal(pc_reg)}\n")
-  printf(p"inst       : 0x${Hexadecimal(inst)}\n")
-  printf(p"gp         : ${regfile(3)}\n")
+  printf(p"if_reg_pc        : 0x${Hexadecimal(if_reg_pc)}\n")
+  printf(p"id_reg_pc        : 0x${Hexadecimal(id_reg_pc)}\n")
+  printf(p"id_reg_inst      : 0x${Hexadecimal(id_reg_inst)}\n")
+  printf(p"id_inst          : 0x${Hexadecimal(id_inst)}\n")
+  printf(p"id_rs1_data      : 0x${Hexadecimal(id_rs1_data)}\n")
+  printf(p"id_rs2_data      : 0x${Hexadecimal(id_rs2_data)}\n")
+  printf(p"exe_reg_pc       : 0x${Hexadecimal(exe_reg_pc)}\n")
+  printf(p"exe_reg_op1_data : 0x${Hexadecimal(exe_reg_op1_data)}\n")
+  printf(p"exe_reg_op2_data : 0x${Hexadecimal(exe_reg_op2_data)}\n")
+  printf(p"exe_alu_out      : 0x${Hexadecimal(exe_alu_out)}\n")
+  printf(p"mem_reg_pc       : 0x${Hexadecimal(mem_reg_pc)}\n")
+  printf(p"mem_wb_data      : 0x${Hexadecimal(mem_wb_data)}\n")
+  printf(p"wb_reg_wb_data   : 0x${Hexadecimal(wb_reg_wb_data)}\n")
 
-  printf(p"rs1_addr   : $rs1_addr\n")
-  printf(p"rs1_data   : 0x${Hexadecimal(rs1_data)}\n")
-
-  printf(p"rs2_addr   : $rs2_addr\n")
-  printf(p"rs2_data   : 0x${Hexadecimal(rs2_data)}\n")
-
-  printf(p"wb_addr    : $wb_addr\n")
-  printf(p"wb_data    : 0x${Hexadecimal(wb_data)}\n")
-
-  printf(p"dmem.addr  : ${io.dmem.addr}\n")
-  printf(p"dmem.rdata : 0x${Hexadecimal(io.dmem.rdata)}\n")
-  printf(p"dmem.wen   : ${io.dmem.wen}\n")
-  printf(p"dmem.wdata : 0x${Hexadecimal(io.dmem.wdata)}\n")
   printf("-----------------------------\n")
 }
