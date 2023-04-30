@@ -115,11 +115,35 @@ class Core extends Module {
   val id_rs2_addr = id_inst(24, 20) // rs2
   val id_wb_addr  = id_inst(11, 7)  // rd - Write-Back用
 
+  val mem_wb_data = Wire(UInt(WORD_LEN.W))
+
   // rs1 のデータを取得(無効なアドレスなら0.U)
-  val id_rs1_data = Mux((id_rs1_addr =/= 0.U(WORD_LEN.U)), regfile(id_rs1_addr), 0.U(WORD_LEN.W))
+  val id_rs1_data = MuxCase(
+    regfile(id_rs1_addr),
+    Seq(
+      (id_rs1_addr === 0.U) -> 0.U(WORD_LEN.W),
+
+      // MEM からフォーワーディング
+      ((id_rs1_addr === mem_reg_wb_addr) && (mem_reg_rf_wen === REN_S)) -> mem_wb_data,
+
+      // MEM からフォーワーディング
+      ((id_rs1_addr === wb_reg_wb_addr) && (wb_reg_rf_wen === REN_S)) -> mem_wb_data,
+    )
+  )
 
   // rs2 のデータを取得(無効なアドレスなら0.U)
-  val id_rs2_data = Mux((id_rs2_addr =/= 0.U(WORD_LEN.U)), regfile(id_rs2_addr), 0.U(WORD_LEN.W))
+  val id_rs2_data = MuxCase(
+    regfile(id_rs2_addr),
+    Seq(
+      (id_rs2_addr === 0.U) -> 0.U(WORD_LEN.W),
+
+      // MEM からフォーワーディング
+      ((id_rs2_addr === mem_reg_wb_addr) && (mem_reg_rf_wen === REN_S)) -> mem_wb_data,
+
+      // MEM からフォーワーディング
+      ((id_rs2_addr === wb_reg_wb_addr) && (wb_reg_rf_wen === REN_S)) -> mem_wb_data,
+    )
+  )
 
   /* I形式の命令の即値 */
   val id_imm_i = id_inst(31, 20)
