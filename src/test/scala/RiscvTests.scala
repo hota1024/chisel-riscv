@@ -1,9 +1,8 @@
-package riscvtests
+package pipeline_data_hazard
 
 import chisel3._
 import org.scalatest._
 import chiseltest._
-import fetch.Top
 
 class RiscvTest extends FlatSpec with ChiselScalatestTester {
   behavior of "mycpu"

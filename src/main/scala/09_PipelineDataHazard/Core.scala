@@ -1,4 +1,4 @@
-package fetch
+package pipeline_data_hazard
 
 import chisel3._
 import chisel3.util._
@@ -103,6 +103,15 @@ class Core extends Module {
   /*------------------*/
   /* [IF/ID Register] */
 
+  id_reg_pc   := Mux(stall_flg, id_reg_pc, if_reg_pc)
+  id_reg_inst := MuxCase(if_inst, Seq(
+    (exe_br_flg || exe_jmp_flg) -> BUBBLE,
+    stall_flg -> id_reg_inst, 
+  ))
+
+  /*---------------------------------*/
+  /* [ID - Instruction Decode Stage] */
+
   // アドレスのみをデコード
   val id_rs1_addr_b = id_reg_inst(19, 15)
   val id_rs2_addr_b = id_reg_inst(24, 20)
@@ -111,20 +120,6 @@ class Core extends Module {
   val id_rs1_data_hazard = (exe_reg_rf_wen === REN_S) && (id_rs1_addr_b =/= 0.U) && (id_rs1_addr_b === exe_reg_wb_addr)
   val id_rs2_data_hazard = (exe_reg_rf_wen === REN_S) && (id_rs2_addr_b =/= 0.U) && (id_rs2_addr_b === exe_reg_wb_addr)
   stall_flg := (id_rs1_data_hazard || id_rs2_data_hazard)
-
-  id_reg_pc   := if_reg_pc
-
-  // 分岐命令/ジャンプ命令なら IF ステージを無効化
-  id_reg_inst := MuxCase(
-    if_inst,
-    Seq(
-      (exe_br_flg || exe_jmp_flg) -> BUBBLE,
-      stall_flg                   -> id_reg_inst,
-    )
-  )
-
-  /*---------------------------------*/
-  /* [ID - Instruction Decode Stage] */
 
   // 分岐命令/ジャンプ命令なら ID ステージを無効化
   val id_inst = Mux((exe_br_flg || exe_jmp_flg || stall_flg), BUBBLE, id_reg_inst)
@@ -145,7 +140,7 @@ class Core extends Module {
       ((id_rs1_addr === mem_reg_wb_addr) && (mem_reg_rf_wen === REN_S)) -> mem_wb_data,
 
       // MEM からフォーワーディング
-      ((id_rs1_addr === wb_reg_wb_addr) && (wb_reg_rf_wen === REN_S)) -> mem_wb_data,
+      ((id_rs1_addr === wb_reg_wb_addr) && (wb_reg_rf_wen === REN_S)) -> wb_reg_wb_data,
     )
   )
 
@@ -159,7 +154,7 @@ class Core extends Module {
       ((id_rs2_addr === mem_reg_wb_addr) && (mem_reg_rf_wen === REN_S)) -> mem_wb_data,
 
       // MEM からフォーワーディング
-      ((id_rs2_addr === wb_reg_wb_addr) && (wb_reg_rf_wen === REN_S)) -> mem_wb_data,
+      ((id_rs2_addr === wb_reg_wb_addr) && (wb_reg_rf_wen === REN_S)) -> wb_reg_wb_data,
     )
   )
 
@@ -297,7 +292,7 @@ class Core extends Module {
     )
   )
 
-  val id_csr_addr = Mux(id_csr_cmd === CSR_E, 0x342.U(CSR_ADDR_LEN.W), id_reg_inst(31, 20))
+  val id_csr_addr = Mux(id_csr_cmd === CSR_E, 0x342.U(CSR_ADDR_LEN.W), id_inst(31, 20))
 
   /*-------------------*/
   /* [ID/EX registers] */
@@ -410,6 +405,13 @@ class Core extends Module {
     )
   )
 
+  /*-----------------------*/
+  /* [Write-Back Register] */
+
+  wb_reg_wb_addr := mem_reg_wb_addr
+  wb_reg_rf_wen  := mem_reg_rf_wen
+  wb_reg_wb_data := mem_wb_data
+
   /*-------------------------*/
   /* [WB - Write-Back Stage] */
 
@@ -422,9 +424,10 @@ class Core extends Module {
   /*          Debug          */
 
   io.gp := regfile(3)
-  io.exit := (id_reg_inst === UNIMP)
+  io.exit := (mem_reg_pc === 0x44.U(WORD_LEN.W))
+  // io.exit := (id_reg_inst === UNIMP)
 
-  printf("fetch\n")
+  printf("pipeline data hazard\n")
   printf(p"if_reg_pc        : 0x${Hexadecimal(if_reg_pc)}\n")
   printf(p"id_reg_pc        : 0x${Hexadecimal(id_reg_pc)}\n")
   printf(p"id_reg_inst      : 0x${Hexadecimal(id_reg_inst)}\n")
