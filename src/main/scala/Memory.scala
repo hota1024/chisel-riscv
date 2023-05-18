@@ -1,4 +1,4 @@
-package fetch
+package vsetvli
 
 import chisel3._
 import chisel3.util._
@@ -37,7 +37,7 @@ class Memory extends Module {
   val mem = Mem(16384, UInt(8.W))
 
   // メモリデータのロード
-  loadMemoryFromFile(mem, "src/hex/hazard_wb.hex")
+  loadMemoryFromFile(mem, "src/hex/vsetvli.hex")
 
   // 命令用メモリの inst に addr が示す値を接続
   io.imem.inst := Cat(
