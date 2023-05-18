@@ -223,7 +223,8 @@ class Core extends Module {
   io.dmem.wen   := mem_wen
   io.dmem.wdata := rs2_data
 
-  val csr_addr  = Mux(csr_cmd === CSR_E, 0x342.U(CSR_ADDR_LEN.W), inst(31,20))
+  // CSR
+  val csr_addr  = Mux(csr_cmd === CSR_E, 0x342.U(CSR_ADDR_LEN.W), inst(31, 20))
   val csr_rdata = csr_regfile(csr_addr)
 
   val csr_wdata = MuxCase(
@@ -270,6 +271,10 @@ class Core extends Module {
       (wb_sel === WB_VL)  -> vl
     )
   )
+
+  when(rf_wen === REN_S) {
+    regfile(wb_addr) := wb_data
+  }
 
   /*----- Debug -----*/
   io.gp := regfile(3)
